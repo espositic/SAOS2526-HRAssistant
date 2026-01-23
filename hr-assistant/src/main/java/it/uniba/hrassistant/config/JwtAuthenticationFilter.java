@@ -16,6 +16,10 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 
+/**
+ * Filtro che intercetta ogni richiesta HTTP per verificare la presenza e validità del JWT.
+ * Estende {@link OncePerRequestFilter} per garantire una singola esecuzione per request.
+ */
 @Component
 @RequiredArgsConstructor
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
@@ -33,17 +37,22 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         final String jwt;
         final String userEmail;
 
+        // 1. Verifica se l'header Authorization è presente e inizia con "Bearer "
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
             filterChain.doFilter(request, response);
             return;
         }
 
+        // 2. Estrae il token
         jwt = authHeader.substring(7);
         userEmail = jwtUtil.extractUsername(jwt);
 
+        // 3. Se c'è un'email e l'utente non è già autenticato nel contesto corrente
         if (userEmail != null && SecurityContextHolder.getContext().getAuthentication() == null) {
             UserDetails userDetails = this.userDetailsService.loadUserByUsername(userEmail);
+            // 4. Valida il token
             if (jwtUtil.isTokenValid(jwt, userDetails)) {
+                // 5. Crea l'oggetto di autenticazione e lo inserisce nel SecurityContext
                 UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
                         userDetails,
                         null,
@@ -53,6 +62,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 SecurityContextHolder.getContext().setAuthentication(authToken);
             }
         }
+        // Procede con la catena dei filtri
         filterChain.doFilter(request, response);
     }
 }

@@ -12,6 +12,10 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
+/**
+ * Controller REST per la gestione dell'autenticazione.
+ * Espone endpoint pubblici per registrazione e login.
+ */
 @RestController
 @RequestMapping("/auth")
 @RequiredArgsConstructor
@@ -22,8 +26,18 @@ public class AuthController {
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
 
+    /**
+     * Endpoint per la registrazione di nuovi utenti.
+     * Crea un nuovo utente con ruolo USER e password hashata.
+     */
     @PostMapping("/register")
     public ResponseEntity<AuthResponse> register(@RequestBody RegisterRequest request) {
+
+        // Controllo preventivo duplicati
+        if (userRepository.existsByEmail(request.getEmail())) {
+            return ResponseEntity.badRequest().body(new AuthResponse("Email already in use"));
+        }
+
         var user = User.builder()
                 .email(request.getEmail())
                 .password(passwordEncoder.encode(request.getPassword()))
@@ -35,6 +49,10 @@ public class AuthController {
         return ResponseEntity.ok(new AuthResponse(jwtToken));
     }
 
+    /**
+     * Endpoint per il login.
+     * Autentica le credenziali e restituisce un token JWT valido.
+     */
     @PostMapping("/login")
     public ResponseEntity<AuthResponse> login(@RequestBody AuthRequest request) {
         authenticationManager.authenticate(
@@ -49,7 +67,7 @@ public class AuthController {
     }
 }
 
-// DTOs interni per brevità (idealmente in package dto)
+// DTOs (Data Transfer Objects) per gestire i payload JSON
 @Data
 class RegisterRequest {
     private String email;

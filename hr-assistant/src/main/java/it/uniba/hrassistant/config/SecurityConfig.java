@@ -18,6 +18,10 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import java.util.Arrays;
 import java.util.List;
 
+/**
+ * Classe di configurazione principale per Spring Security (versione 6+).
+ * Definisce la politica CORS, la gestione delle sessioni (Stateless) e i filtri.
+ */
 @Configuration
 @EnableWebSecurity
 @RequiredArgsConstructor
@@ -29,9 +33,13 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
+                // Disabilita CSRF perché usiamo JWT (Stateless)
                 .csrf(AbstractHttpConfigurer::disable)
+                // Configurazione CORS (Cross-Origin Resource Sharing)
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
-                // Header NO-CACHE per sicurezza
+                // REQUISITO CRITICO: PREVENZIONE CACHE
+                // Impedisce al browser di salvare dati sensibili nella cache locale.
+                // Fondamentale per evitare che il tasto "Indietro" mostri dati dopo il logout.
                 .headers(headers -> headers
                         .cacheControl(cache -> cache.disable())
                         .addHeaderWriter((request, response) -> {
@@ -40,17 +48,23 @@ public class SecurityConfig {
                             response.setHeader(HttpHeaders.EXPIRES, "0");
                         })
                 )
+                // Autorizzazione Endpoint
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/auth/**").permitAll()
                         .anyRequest().authenticated()
                 )
+                // Gestione Sessione: STATELESS (Nessuna sessione server-side)
                 .sessionManagement(sess -> sess.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                // Inserimento Provider e Filtro Custom
                 .authenticationProvider(authenticationProvider)
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }
 
+    /**
+     * Configura le regole CORS per permettere chiamate solo dal Frontend fidato.
+     */
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();

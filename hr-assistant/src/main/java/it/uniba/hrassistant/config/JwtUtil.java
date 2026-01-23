@@ -15,28 +15,48 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Function;
 
+/**
+ * Utility class per la gestione del ciclo di vita dei token JWT (JSON Web Token).
+ * Si occupa di: Generazione, Firma (HMAC-SHA256), Validazione ed Estrazione Claims.
+ */
 @Component
 public class JwtUtil {
 
+    // Chiave segreta iniettata da application.properties (o variabili d'ambiente)
     @Value("${application.security.jwt.secret-key:404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970}")
     private String secretKey;
 
     @Value("${application.security.jwt.expiration:86400000}") // 1 giorno default
     private long jwtExpiration;
 
+    /**
+     * Estrae lo username (email) dal token.
+     */
     public String extractUsername(String token) {
         return extractClaim(token, Claims::getSubject);
     }
 
+    /**
+     * Metodo generico per estrarre uno specifico Claim dal payload del token.
+     */
     public <T> T extractClaim(String token, Function<Claims, T> claimsResolver) {
         final Claims claims = extractAllClaims(token);
         return claimsResolver.apply(claims);
     }
 
+    /**
+     * Genera un token per l'utente specificato senza claim extra.
+     */
     public String generateToken(UserDetails userDetails) {
         return generateToken(new HashMap<>(), userDetails);
     }
 
+    /**
+     * Genera un token firmato digitalmente.
+     * * @param extraClaims Mappa di dati aggiuntivi da inserire nel payload.
+     * @param userDetails Dettagli dell'utente autenticato.
+     * @return La stringa JWT.
+     */
     public String generateToken(Map<String, Object> extraClaims, UserDetails userDetails) {
         return Jwts.builder()
                 .setClaims(extraClaims)
@@ -47,6 +67,9 @@ public class JwtUtil {
                 .compact();
     }
 
+    /**
+     * Valida il token verificando la firma, la scadenza e la corrispondenza con l'utente.
+     */
     public boolean isTokenValid(String token, UserDetails userDetails) {
         final String username = extractUsername(token);
         return (username.equals(userDetails.getUsername())) && !isTokenExpired(token);
@@ -60,6 +83,7 @@ public class JwtUtil {
         return extractClaim(token, Claims::getExpiration);
     }
 
+    // Parsing del token usando la chiave segreta per verificare la firma
     private Claims extractAllClaims(String token) {
         return Jwts.parserBuilder()
                 .setSigningKey(getSignInKey())
@@ -68,6 +92,7 @@ public class JwtUtil {
                 .getBody();
     }
 
+    // Decodifica la chiave segreta da Base64
     private Key getSignInKey() {
         byte[] keyBytes = Decoders.BASE64.decode(secretKey);
         return Keys.hmacShaKeyFor(keyBytes);
