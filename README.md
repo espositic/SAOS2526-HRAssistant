@@ -26,8 +26,8 @@ Progetto realizzato per l'esame di Sicurezza delle Architetture Orientate ai Ser
 
 ## Scenario
 La piattaforma funge da intermediario sicuro tra i dipendenti e i dati aziendali, sfruttando un LLM (Large Language Model) locale per evitare la fuga di dati verso terzi.
-* **Dipendenti:** Possono interrogare l'assistente per informazioni su buste paga, ferie e policy aziendali.
-* **HR Admin:** Gestiscono i documenti e monitorano gli audit log delle interazioni.
+* **Dipendenti (Role USER):** Possono interrogare l'assistente per informazioni su buste paga, ferie e policy aziendali.
+* **HR Admin (Role HR_ADMIN):** Gestiscono i documenti e monitorano gli audit log delle interazioni.
 * **AI Engine (Ollama):** Analizza le richieste in linguaggio naturale all'interno di un perimetro di rete isolato.
 
 ## Stack Tecnologico
@@ -36,9 +36,9 @@ La piattaforma funge da intermediario sicuro tra i dipendenti e i dati aziendali
 * **Containerizzazione:** Docker & Docker Compose
 
 ### Infrastruttura e Librerie
-* **Database:** PostgreSQL 16 (Relational Data)
-* **Cache:** Redis 7.2 (Session & Rate Limiting)
-* **AI Engine:** Ollama con modello Llama 3 (On-premise AI)
+* **Database:** PostgreSQL 16
+* **Cache:** Redis 7.2 (Per la gestione delle sessioni e Rate Limiting)
+* **AI Engine:** Ollama con modello Llama 3 (LLM on-premise)
 * **Sicurezza:** Spring Security, SSL/TLS (Self-signed PKCS12)
 * **Comunicazione AI:** Spring AI 0.8.1
 
@@ -65,9 +65,14 @@ DB_PASSWORD=change_me
 # Security
 APP_SECRET_KEY=insert_your_secure_key_here
 
+# JWT Security
+JWT_SECRET_KEY=insert_a_very_long_hex_string_key_here_at_least_256_bit
+JWT_EXPIRATION=86400000
+
 ```
 
 > **Nota:** Il file `.env` è inserito nel `.gitignore` per evitare leak di sicurezza su GitHub.
+Per generare i token JWT viene usato l'algoritmo HMAC-SHA256.
 
 ## Generazione Certificati SSL (HTTPS)
 
@@ -85,7 +90,8 @@ keytool -genkeypair \
 
 ```
 
-Quando richiesto, inserire una password che dovrà coincidere con quella configurata in `application.properties`.
+> **Nota:** Quando richiesto, inserire una password che deve coincidere con `SSL_KEY_PASSWORD` nel file .env.
+
 
 ## Avvio Infrastruttura Docker
 
@@ -126,16 +132,10 @@ docker exec -it hr_ollama ollama run llama3
 
 1. Aprire il progetto con **IntelliJ IDEA** (versione Ultimate o Community).
 2. Attendere l'indicizzazione delle dipendenze Maven (`pom.xml`).
-3. Verificare che `application.properties` abbia la configurazione SSL attiva:
-```properties
-server.port=8443
-server.ssl.enabled=true
-
-```
-
-
-4. Avviare la classe Main `HrVirtualAssistantApplication.java`.
-5. Il server sarà raggiungibile su: `https://localhost:8443`.
+3. Installare il plugin EnvFile (Borys Pierov) per caricare le variabili d'ambiente in locale.
+4. Nella Run Configuration, attivare "Enable EnvFile" e selezionare il file .env creato nella root.
+5. Avviare la classe Main `HrVirtualAssistantApplication.java`.
+6. Il server sarà raggiungibile su: `https://localhost:8443`.
 
 ---
 
@@ -147,6 +147,16 @@ server.ssl.enabled=true
 
 * **Ollama (AI):** Non espone alcuna porta verso l'host (macchina fisica). È configurato per rispondere solo all'interno della rete docker `hr-network`.
 * **Backend:** Funge da *gateway* unico. Nessun utente può interrogare direttamente l'AI; ogni richiesta deve passare dal Backend che applica autenticazione e validazione.
+
+## Autenticazione Stateless & Gestione Identità
+
+Il sistema di Autenticazione è implementato utilizzando:
+
+* JWT (JSON Web Token): Autenticazione Stateless. Il server non mantiene sessioni in memoria, riducendo l'impatto di attacchi DoS e problemi di scalabilità.
+
+* Password Hashing: Le password degli utenti sono salvate nel database esclusivamente in formato hash tramite BCrypt, rendendole illeggibili anche in caso di Data Breach.
+
+* RBAC (Role-Based Access Control): Implementazione di ruoli (USER, HR_ADMIN) per segregare l'accesso agli endpoint sensibili.
 
 ## Gestione dei Segreti (No Hardcoded Credentials)
 
@@ -166,6 +176,14 @@ Tutte le comunicazioni REST API sono protette da crittografia.
 
 I dati sensibili (Database HR) e i modelli AI (Proprietà intellettuale/Knowledge base) sono salvati su **Docker Volumes** persistenti.
 Questo garantisce che i dati sopravvivano al riavvio dei container, ma rimangano isolati dal file system generico dell'host, accessibili solo tramite i processi docker autorizzati.
+
+## Protezione Client-Side & Cache Control
+
+Per mitigare rischi di privacy sui computer condivisi (es. navigazione post-logout):
+
+* **No-Cache Headers:** Implementazione aggressiva degli header `Cache-Control: no-store, no-cache, max-age=0` e `Pragma: no-cache`.
+* Questo impedisce al browser di salvare le pagine visitate nella cronologia locale, bloccando la visualizzazione di dati sensibili tramite il tasto "Indietro" del browser dopo il logout.
+* **CORS Restrittivo:** Le API accettano richieste solo dall'origine frontend autorizzata (`http://localhost:5173`), bloccando chiamate da domini non attendibili.
 
 ---
 
