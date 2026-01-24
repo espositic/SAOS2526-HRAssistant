@@ -51,6 +51,7 @@ public class SecurityConfig {
                 // Autorizzazione Endpoint
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/auth/**").permitAll()
+                        .requestMatchers("/error").permitAll()
                         .anyRequest().authenticated()
                 )
                 // Gestione Sessione: STATELESS (Nessuna sessione server-side)

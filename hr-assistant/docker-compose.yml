@@ -36,7 +36,8 @@ services:
     restart: always
     volumes:
       - ollama_data:/root/.ollama
-    # È accessibile SOLO dentro la rete 'hr-network' sulla porta 11434.
+    ports:
+      - "11434:11434"
     networks:
       - hr-network
     tty: true
