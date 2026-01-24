@@ -17,11 +17,14 @@ Progetto realizzato per l'esame di Sicurezza delle Architetture Orientate ai Ser
 - [Guida all'avvio del Backend](#guida-allavvio-del-backend)
 - [Approcci di sicurezza adottati](#approcci-di-sicurezza-adottati)
   - [Isolamento di Rete (Network Segregation)](#isolamento-di-rete-network-segregation)
-  - [Crittografia in Transito (SSL/TLS)](#crittografia-in-transito-ssltls)
-  - [Gestione Sicura dei Segreti](#gestione-sicura-dei-segreti)
-  - [Persistenza e Volumi Sicuri](#persistenza-e-volumi-sicuri)
+  - [Autenticazione Stateless & Gestione Identità](#autenticazione-stateless--gestione-identità)
+  - [Gestione dei Segreti (No Hardcoded Credentials)](#gestione-dei-segreti-no-hardcoded-credentials)
+  - [Crittografia in Transito (TLS/SSL)](#crittografia-in-transito-tlsssl)
+  - [Protezione Dati a Riposo (Docker Volumes)](#protezione-dati-a-riposo-docker-volumes)
+  - [Protezione Client-Side & Cache Control](#protezione-client-side--cache-control)
+  - [Protezione DoS & Rate Limiting](#protezione-dos--rate-limiting)
+  - [Audit Logging & Non-Repudiation](#audit-logging--non-repudiation)
 - [Architettura del Sistema](#architettura-del-sistema)
-
 ---
 
 ## Scenario
@@ -185,6 +188,20 @@ Per mitigare rischi di privacy sui computer condivisi (es. navigazione post-logo
 * Questo impedisce al browser di salvare le pagine visitate nella cronologia locale, bloccando la visualizzazione di dati sensibili tramite il tasto "Indietro" del browser dopo il logout.
 * **CORS Restrittivo:** Le API accettano richieste solo dall'origine frontend autorizzata (`http://localhost:5173`), bloccando chiamate da domini non attendibili.
 
+## Protezione DoS & Rate Limiting
+
+Per mitigare attacchi Denial of Service (DoS) e abuso delle risorse AI (che sono costose in termini di CPU):
+
+* Algoritmo Token Bucket: Implementato tramite libreria Bucket4j.
+* Policy: 10 richieste al minuto per utente.
+* Distributed State: I contatori sono mantenuti su Redis, garantendo che il limite persista anche in caso di riavvio dell'applicazione.
+* Risposta: Al superamento della soglia, il server restituisce immediatamente status 429 Too Many Requests senza ingaggiare l'AI.
+
+## Audit Logging & Non-Repudiation
+Ogni interazione con il sistema viene tracciata in modo indelebile nel database PostgreSQL.
+
+* La tabella audit_logs registra: Username, Domanda, Timestamp e Status (SUCCESS, BLOCKED, ERROR).
+* Questo garantisce la non ripudiabilità delle azioni e permette analisi forensi in caso di incidenti.
 ---
 
 # Architettura del Sistema
