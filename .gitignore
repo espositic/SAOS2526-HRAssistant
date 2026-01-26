@@ -3,3 +3,4 @@
 target/
 .idea/
 *.class
+node_modules
