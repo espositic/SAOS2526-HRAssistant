@@ -15,6 +15,7 @@ Progetto realizzato per l'esame di Sicurezza delle Architetture Orientate ai Ser
   - [Avvio Infrastruttura Docker](#avvio-infrastruttura-docker)
   - [Installazione Modello AI](#installazione-modello-ai)
 - [Guida all'avvio del Backend](#guida-allavvio-del-backend)
+- [Avvio Frontend (React)](#avvio-frontend-react)
 - [Approcci di sicurezza adottati](#approcci-di-sicurezza-adottati)
   - [Isolamento di Rete (Network Segregation)](#isolamento-di-rete-network-segregation)
   - [Autenticazione Stateless & Gestione Identità](#autenticazione-stateless--gestione-identità)
@@ -24,8 +25,8 @@ Progetto realizzato per l'esame di Sicurezza delle Architetture Orientate ai Ser
   - [Protezione Client-Side & Cache Control](#protezione-client-side--cache-control)
   - [Protezione DoS & Rate Limiting](#protezione-dos--rate-limiting)
   - [Audit Logging & Non-Repudiation](#audit-logging--non-repudiation)
+  - [Sicurezza della Navigazione](#sicurezza-della-navigazione)
 - [Architettura del Sistema](#architettura-del-sistema)
----
 
 ## Scenario
 La piattaforma funge da intermediario sicuro tra i dipendenti e i dati aziendali, sfruttando un LLM (Large Language Model) locale per evitare la fuga di dati verso terzi.
@@ -124,7 +125,6 @@ Dovresti vedere 3 container attivi: `hr_postgres`, `hr_redis`, `hr_ollama`.
 
 ```bash
 docker exec -it hr_ollama ollama run llama3
-
 ```
 
 2. Una volta apparso il prompt di chat `>>>`, digitare `/bye` per uscire. Il modello è ora persistente nel volume Docker.
@@ -141,6 +141,18 @@ docker exec -it hr_ollama ollama run llama3
 6. Il server sarà raggiungibile su: `https://localhost:8443`.
 
 ---
+
+# Avvio Frontend (React)
+
+1. Aprire un terminale nella cartella frontend.
+2. Eseguire l'installazione e l'avvio:
+
+```bash
+npm install
+npm run dev
+```
+L'app sarà disponibile su http://localhost:5173.
+> **Nota:** Se il browser blocca la chiamata API per certificato self-signed, visitare https://localhost:8443/api/auth/login una volta e cliccare su "Procedi comunque".
 
 # Approcci di sicurezza adottati
 
@@ -202,6 +214,12 @@ Ogni interazione con il sistema viene tracciata in modo indelebile nel database 
 
 * La tabella audit_logs registra: Username, Domanda, Timestamp e Status (SUCCESS, BLOCKED, ERROR).
 * Questo garantisce la non ripudiabilità delle azioni e permette analisi forensi in caso di incidenti.
+
+## Sicurezza della Navigazione
+
+* Logout Sicuro: Utilizzo di `window.location.replace('/login')` per distruggere lo stato dell'applicazione e sovrascrivere la cronologia, impedendo l'uso del tasto "Indietro" per rientrare nella sessione.
+* Private Routes: Componenti React "Guard" che bloccano il rendering delle pagine se il token non è presente o è scaduto.
+* Axios Interceptors: Gestione centralizzata del token e reindirizzamento automatico al login in caso di errore 401 Unauthorized.
 ---
 
 # Architettura del Sistema
