@@ -82,4 +82,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         // Procede con la catena dei filtri
         filterChain.doFilter(request, response);
     }
+
+    @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        // Non filtrare se è un login, o se è una richiesta OPTIONS (CORS Preflight)
+        return request.getServletPath().startsWith("/auth/") ||
+                request.getMethod().equals("OPTIONS");
+    }
 }

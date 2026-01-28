@@ -96,63 +96,88 @@ keytool -genkeypair \
 
 > **Nota:** Quando richiesto, inserire una password che deve coincidere con `SSL_KEY_PASSWORD` nel file .env.
 
-
 ## Avvio Infrastruttura Docker
 
-Il file `docker-compose.yml` orchestra PostgreSQL, Redis e Ollama.
+L'intero sistema (Database, Redis, Ollama, Backend e Frontend) è containerizzato. Per garantire un avvio corretto, il download del modello AI e la creazione degli utenti, utilizzare lo script di automazione.
 
-1. Avviare i container:
+1. Creare un file `start.sh` nella root del progetto e incollare il seguente contenuto:
 
 ```bash
+#!/bin/bash
+docker compose down -v
 docker compose up -d
+sleep 15
+
+curl -s -k -X POST https://localhost:8443/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "admin@uniba.it",
+    "password": "password",
+    "fullName": "Super Admin",
+    "role": "HR_ADMIN"
+}'
+
+curl -s -k -X POST https://localhost:8443/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "mario.rossi@uniba.it",
+    "password": "password",
+    "fullName": "Mario Rossi",
+    "role": "USER"
+}'
+
+docker exec -it hr_ollama ollama pull llama3
 
 ```
 
-2. Verificare lo stato:
+2. Rendere eseguibile e lanciare lo script:
 
 ```bash
-docker ps
+chmod +x start.sh
+./start.sh
 
 ```
 
-Dovresti vedere 3 container attivi: `hr_postgres`, `hr_redis`, `hr_ollama`.
+## Installazione Modello AI
 
-## Installazione Modello AI (Ollama)
-
-È necessario scaricare il modello LLM (Llama 3) all'interno del container in esecuzione.
-
-1. Eseguire il comando di download (~4GB):
-
-```bash
-docker exec -it hr_ollama ollama run llama3
-```
-
-2. Una volta apparso il prompt di chat `>>>`, digitare `/bye` per uscire. Il modello è ora persistente nel volume Docker.
+L'installazione del modello LLM (Llama 3) è **gestita automaticamente** dallo script `start.sh`.
+Il modello viene scaricato all'interno del container `hr_ollama` e salvato nel volume persistente. Non sono richieste azioni manuali.
 
 ---
 
 # Guida all'avvio del Backend
 
-1. Aprire il progetto con **IntelliJ IDEA** (versione Ultimate o Community).
-2. Attendere l'indicizzazione delle dipendenze Maven (`pom.xml`).
-3. Installare il plugin EnvFile (Borys Pierov) per caricare le variabili d'ambiente in locale.
-4. Nella Run Configuration, attivare "Enable EnvFile" e selezionare il file .env creato nella root.
-5. Avviare la classe Main `HrVirtualAssistantApplication.java`.
-6. Il server sarà raggiungibile su: `https://localhost:8443`.
+Il Backend Spring Boot viene avviato automaticamente all'interno del container Docker.
+
+1. **Monitoraggio:** Per verificare che il backend sia attivo e controllare i log:
+```bash
+docker logs -f hr-assistant
+
+```
+
+
+2. **Accesso SSL (Passaggio Critico):**
+Poiché si utilizza un certificato Self-Signed, il browser bloccherà le connessioni.
+* Aprire il browser su: `https://localhost:8443/auth/login`
+* Accettare il rischio di sicurezza (Avanzate -> Procedi su localhost).
+* **Senza questo passaggio, il Frontend non potrà comunicare con il Backend.**
+
+
 
 ---
 
 # Avvio Frontend (React)
 
-1. Aprire un terminale nella cartella frontend.
-2. Eseguire l'installazione e l'avvio:
+Anche il Frontend è containerizzato e servito tramite Nginx/Vite all'interno di Docker.
 
-```bash
-npm install
-npm run dev
-```
-L'app sarà disponibile su http://localhost:5173.
-> **Nota:** Se il browser blocca la chiamata API per certificato self-signed, visitare https://localhost:8443/api/auth/login una volta e cliccare su "Procedi comunque".
+1. **Accesso:** Aprire il browser su `http://localhost:5173`.
+2. **Login:** Utilizzare le credenziali generate automaticamente:
+* **User:** `mario.rossi@uniba.it` / `password`
+* **Admin:** `admin@uniba.it` / `password`
+
+
+
+> **Nota:** Se si riscontrano errori di "Network Error", assicurarsi di aver completato il passaggio "Accesso SSL" descritto nella sezione Backend.
 
 # Approcci di sicurezza adottati
 

@@ -1,0 +1,90 @@
+version: '3.8'
+
+services:
+  # --- PostgreSQL ---
+  postgres:
+    image: postgres:16
+    container_name: hr_postgres
+    restart: always
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - hr-network
+
+  # --- Redis ---
+  redis:
+    image: redis:7.2
+    container_name: hr_redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - hr-network
+
+  # --- Ollama ---
+  ollama:
+    image: ollama/ollama:latest
+    container_name: hr_ollama
+    restart: always
+    volumes:
+      - ollama_data:/root/.ollama
+    ports:
+      - "11434:11434"
+    networks:
+      - hr-network
+    tty: true
+
+  # --- Backend---
+  hr-assistant:
+    build: ./hr-assistant
+    ports:
+      - "8443:8443"
+    depends_on:
+      - postgres
+      - redis
+      - ollama
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${DB_NAME}
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_AI_OLLAMA_BASE_URL: http://ollama:11434
+
+      SPRING_DATASOURCE_USERNAME: ${DB_USER}
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD}
+
+      SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: 40
+      SPRING_DATASOURCE_HIKARI_CONNECTION_TIMEOUT: 60000
+      SPRING_JPA_OPEN_IN_VIEW: "false"
+
+      SERVER_SSL_KEY_STORE: classpath:keystore.p12
+      SERVER_SSL_KEY_STORE_PASSWORD: ${SSL_KEY_PASSWORD}
+    networks:
+      - hr-network
+
+  # --- Frontend ---
+  frontend:
+    build: ./frontend
+    container_name: hr_frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      - hr-assistant
+    networks:
+      - hr-network
+
+volumes:
+  postgres_data:
+  redis_data:
+  ollama_data:
+
+networks:
+  hr-network:
+    driver: bridge
