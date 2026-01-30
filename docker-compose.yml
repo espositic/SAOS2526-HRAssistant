@@ -1,30 +1,27 @@
-version: '3.8'
-
 services:
   # --- PostgreSQL ---
-  postgres:
+  postgres_db:
     image: postgres:16
     container_name: hr_postgres
     restart: always
+    env_file:
+      - .env # Legge le credenziali dal file .env
     environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${DB_NAME}
-      POSTGRES_USER: ${DB_USER}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-    ports:
-      - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
-    networks:
-      - hr-network
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 5s
+      - postgres_data:/var/lib/postgresql/data # Persistenza: i dati non spariscono se spegni il container
+    healthcheck: # Dice agli altri quando il DB è pronto
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${DB_NAME}"]
+      interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - hr-network
 
   # --- Redis ---
-  redis:
+  redis_cache:
     image: redis:7.2
     container_name: hr_redis
     restart: always
@@ -36,63 +33,61 @@ services:
       - hr-network
 
   # --- Ollama ---
-  ollama:
+  ollama_ai:
     image: ollama/ollama:latest
     container_name: hr_ollama
     restart: always
     volumes:
-      - ollama_data:/root/.ollama
+      - ollama_data:/root/.ollama # Salva i modelli scaricati per non riscaricarli
     ports:
       - "11434:11434"
     networks:
       - hr-network
     tty: true
 
-  # --- Backend---
+  # --- Backend ---
   hr-assistant:
-    build: ./hr-assistant
+    build: ./hr-assistant # Indica dove si trova il Dockerfile del backend     
+    image: saos2526-hrassistant-hr-assistant:latest
+    container_name: saos2526-hrassistant-hr-assistant-1
     ports:
-      - "8443:8443"
+      - "8443:8443" # Espone la porta all'esterno
     depends_on:
-          postgres:
-            condition: service_healthy
-          redis:
-            condition: service_started
-          ollama:
-            condition: service_started
+      postgres_db:
+        condition: service_healthy # Aspetta che il DB sia effettivamente "sano" prima di partire
+      redis_cache:
+        condition: service_started
+    env_file:
+      - .env
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${DB_NAME}
-      SPRING_DATA_REDIS_HOST: redis
-      SPRING_AI_OLLAMA_BASE_URL: http://ollama:11434
-
-      SPRING_DATASOURCE_USERNAME: ${DB_USER}
-      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD}
-
-      SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: 40
-      SPRING_DATASOURCE_HIKARI_CONNECTION_TIMEOUT: 60000
-      SPRING_JPA_OPEN_IN_VIEW: "false"
-
-      SERVER_SSL_KEY_STORE: classpath:keystore.p12
-      SERVER_SSL_KEY_STORE_PASSWORD: ${SSL_KEY_PASSWORD}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - JWT_EXPIRATION=${JWT_EXPIRATION}
+      - SSL_KEY_PASSWORD=${SSL_KEY_PASSWORD}
+      - DB_HOST=hr_postgres
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${POSTGRES_USER}
+      - DB_PASSWORD=${POSTGRES_PASSWORD}
     networks:
       - hr-network
 
   # --- Frontend ---
   frontend:
-    build: ./frontend
-    container_name: hr_frontend
+    build: ./frontend # Indica dove si trova il Dockerfile del frontend
+    container_name: hr_frontend 
     ports:
-      - "5173:80"
+      - "5173:80" # Mappa la porta 80 interna del container sulla 5173 del tuo PC
     depends_on:
       - hr-assistant
     networks:
       - hr-network
 
+# Definizione dei volumi per non perdere i dati al riavvio
 volumes:
   postgres_data:
   redis_data:
   ollama_data:
 
+# Creazione di una rete isolata per far parlare i container tra loro
 networks:
   hr-network:
     driver: bridge
