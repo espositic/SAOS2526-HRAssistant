@@ -4,29 +4,22 @@
 Caso di studio realizzato per l'esame di Sicurezza delle Architetture Orientate ai Servizi dell'Università degli Studi di Bari.
 
 # Indice
+
 - [HRAssistant](#hrassistant)
   - [Scenario](#scenario)
   - [Stack Tecnologico](#stack-tecnologico)
-    - [Infrastruttura e Librerie](#infrastruttura-e-librerie)
+  - [Infrastruttura e Librerie](#infrastruttura-e-librerie)
+
 - [Guida alla replicazione](#guida-alla-replicazione)
   - [Prerequisiti](#prerequisiti)
   - [Configurazione Ambiente e Segreti (.env)](#configurazione-ambiente-e-segreti-env)
   - [Generazione Certificati SSL (HTTPS)](#generazione-certificati-ssl-https)
   - [Avvio Infrastruttura Docker](#avvio-infrastruttura-docker)
-  - [Installazione Modello AI](#installazione-modello-ai)
-- [Guida all'avvio del Backend](#guida-allavvio-del-backend)
-- [Avvio Frontend (React)](#avvio-frontend-react)
+
 - [Approcci di sicurezza adottati](#approcci-di-sicurezza-adottati)
-  - [Isolamento di Rete (Network Segregation)](#isolamento-di-rete-network-segregation)
-  - [Autenticazione Stateless & Gestione Identità](#autenticazione-stateless--gestione-identità)
-  - [Gestione dei Segreti (No Hardcoded Credentials)](#gestione-dei-segreti-no-hardcoded-credentials)
-  - [Crittografia in Transito (TLS/SSL)](#crittografia-in-transito-tlsssl)
-  - [Protezione Dati a Riposo (Docker Volumes)](#protezione-dati-a-riposo-docker-volumes)
-  - [Protezione Client-Side & Cache Control](#protezione-client-side--cache-control)
-  - [Protezione DoS & Rate Limiting](#protezione-dos--rate-limiting)
-  - [Audit Logging & Non-Repudiation](#audit-logging--non-repudiation)
-  - [Sicurezza della Navigazione](#sicurezza-della-navigazione)
+
 - [Architettura del Sistema](#architettura-del-sistema)
+
 
 ## Scenario
 La piattaforma funge da intermediario sicuro tra i dipendenti e i dati aziendali, sfruttando un LLM (Large Language Model) locale per evitare la fuga di dati verso terzi.
@@ -37,11 +30,11 @@ La piattaforma funge da intermediario sicuro tra i dipendenti e i dati aziendali
 ## Stack Tecnologico
 * **Linguaggio:** Java 21 (LTS)
 * **Framework:** Spring Boot 3.2.5
-* **Containerizzazione:** Docker & Docker Compose
+* **Containerizzazione:** Docker Compose v2
 
 ### Infrastruttura e Librerie
 * **Database:** PostgreSQL 16
-* **Cache:** Redis 7.2 (Per la gestione delle sessioni e Rate Limiting)
+* **Cache:** Redis 7.2
 * **AI Engine:** Ollama con modello Llama 3 (LLM on-premise)
 * **Sicurezza:** Spring Security, SSL/TLS (Self-signed PKCS12)
 * **Comunicazione AI:** Spring AI 0.8.1
@@ -109,9 +102,8 @@ keytool -genkeypair \
 
 ## Avvio Infrastruttura Docker
 
-L'intero sistema (Database, Redis, Ollama, Backend e Frontend) è containerizzato. Per garantire un avvio corretto, il download del modello AI e la creazione degli utenti, utilizzare lo script di automazione.
-
-1. Eseguire i seguenti comandi:
+L'intero sistema (Database, Redis, Ollama, Backend e Frontend) è containerizzato. Per garantire un avvio corretto, il download del modello AI e la creazione degli utenti, 
+eseguire i seguenti comandi:
 
 ```bash
 # Entra nella cartella backend, compila il file .jar
@@ -142,74 +134,23 @@ Poiché si utilizza un certificato Self-Signed, il browser bloccherà le conness
 
 Grazie allo script di inizializzazione automatica del database (`init.sql`), l'ambiente è pronto all'uso immediatamente dopo il primo avvio.
 * Aprire il browser all'indirizzo `http://localhost:5173`.
-* *Utenza Predefinita: Il database viene popolato automaticamente con le seguenti credenziali amministratore:
+* Utenza Predefinita: Il database viene popolato automaticamente con le seguenti credenziali amministratore:
    * Email: `admin@hr.com`
    * Password: `admin123`
 * Gestione Utenti: Una volta effettuato l'accesso come `HR_ADMIN`, è possibile creare nuovi utenti o visualizzare i log di sistema.
 
 # Approcci di sicurezza adottati
 
-## Isolamento di Rete (Network Segregation)
-
-È stata implementata una rigorosa segregazione di rete tramite Docker Networks.
-
-* **Ollama (AI):** Non espone alcuna porta verso l'host (macchina fisica). È configurato per rispondere solo all'interno della rete docker `hr-network`.
-* **Backend:** Funge da *gateway* unico. Nessun utente può interrogare direttamente l'AI; ogni richiesta deve passare dal Backend che applica autenticazione e validazione.
-
-## Autenticazione Stateless & Gestione Identità
-
-Il sistema di Autenticazione è implementato utilizzando:
-
-* JWT (JSON Web Token): Autenticazione Stateless. Il server non mantiene sessioni in memoria, riducendo l'impatto di attacchi DoS e problemi di scalabilità.
-
-* Password Hashing: Le password degli utenti sono salvate nel database esclusivamente in formato hash tramite BCrypt, rendendole illeggibili anche in caso di Data Breach.
-
-* RBAC (Role-Based Access Control): Implementazione di ruoli (USER, HR_ADMIN) per segregare l'accesso agli endpoint sensibili.
-
-## Gestione dei Segreti (No Hardcoded Credentials)
-
-Per mitigare il rischio di esposizione delle credenziali, è stata adottata una gestione basata su variabili d'ambiente.
-
-* Le password del DB e le chiavi segrete sono iniettate a runtime tramite il file `.env`.
-* Il file `application.properties` utilizza placeholder `${NOME_VARIABILE}` invece di valori statici.
-
-## Crittografia in Transito (TLS/SSL)
-
-Tutte le comunicazioni REST API sono protette da crittografia.
-
-* Il server Spring Boot è configurato per accettare solo connessioni HTTPS sulla porta 8443.
-* Viene utilizzato un certificato PKCS12 autogenerato (simulando un certificato di una CA interna aziendale).
-
-## Protezione Dati a Riposo (Docker Volumes)
-
-I dati sensibili (Database HR) e i modelli AI (Proprietà intellettuale/Knowledge base) sono salvati su **Docker Volumes** persistenti.
-Questo garantisce che i dati sopravvivano al riavvio dei container, ma rimangano isolati dal file system generico dell'host, accessibili solo tramite i processi docker autorizzati.
-
-## Protezione Client-Side & Cache Control
-
-Per mitigare rischi di privacy sui computer condivisi (es. navigazione post-logout):
-
-* **No-Cache Headers:** Implementazione aggressiva degli header `Cache-Control: no-store, no-cache, max-age=0` e `Pragma: no-cache`.
-* Questo impedisce al browser di salvare le pagine visitate nella cronologia locale, bloccando la visualizzazione di dati sensibili tramite il tasto "Indietro" del browser dopo il logout.
-* **CORS Restrittivo:** Le API accettano richieste solo dall'origine frontend autorizzata (`http://localhost:5173`), bloccando chiamate da domini non attendibili.
-
-## Protezione DoS & Rate Limiting
-
-Per mitigare attacchi Denial of Service (DoS) e abuso delle risorse AI (che sono costose in termini di CPU):
-
-* Algoritmo Token Bucket: Implementato tramite libreria Bucket4j.
-* Policy: 10 richieste al minuto per utente.
-* Distributed State: I contatori sono mantenuti su Redis, garantendo che il limite persista anche in caso di riavvio dell'applicazione.
-* Risposta: Al superamento della soglia, il server restituisce immediatamente status 429 Too Many Requests senza ingaggiare l'AI.
-
-## Audit Logging & Non-Repudiation
-Ogni interazione con il sistema viene tracciata in modo indelebile nel database PostgreSQL.
-
-* La tabella audit_logs registra: Username, Domanda, Timestamp e Status (SUCCESS, BLOCKED, ERROR).
-* Questo garantisce la non ripudiabilità delle azioni e permette analisi forensi in caso di incidenti.
-
-## Sicurezza della Navigazione
-
-* Logout Sicuro: Utilizzo di `window.location.replace('/login')` per distruggere lo stato dell'applicazione e sovrascrivere la cronologia, impedendo l'uso del tasto "Indietro" per rientrare nella sessione.
-* Private Routes: Componenti React "Guard" che bloccano il rendering delle pagine se il token non è presente o è scaduto.
-* Axios Interceptors: Gestione centralizzata del token e reindirizzamento automatico al login in caso di errore 401 Unauthorized.
+* **Role-Based Access Controll:** Filtri granulari in Spring Security che limitano le API in base al ruolo (`USER` o `HR_ADMIN`).
+* **Autenticazione Tramite JWT Custom:** Utilizzo di JSON Web Token firmati con HMAC-SHA256. Permette di gestire le sessioni senza salvare dati sensibili sul server, migliorando la scalabilità e la sicurezza.
+* **Hashing delle Password:** Le credenziali non sono mai salvate in chiaro. Viene usato BCrypt per generare hash per scongiurare attacchi di tipo brute-force e rainbow table.
+* **Crittografia in Transito:** Tutte le comunicazioni tra client e server avvengono su protocollo HTTPS (porta 8443) per impedire l'intercettazione dei dati.
+* **Isolamento di Rete:** Il servizio AI è confinato in una rete virtuale interna Docker. Non esponendo porte pubbliche, è protetto da attacchi diretti e accessibile solo tramite il backend.
+* **Rate Limiting con Redis:** Implementazione di un limite di 10 richieste al minuto per utente tramite Bucket4j e Redis. Protegge il sistema da attacchi Denial of Service (DoS) e dall'abuso di risorse.
+* **Gestione Esternalizzata dei Segreti:** Password del database e chiavi JWT sono caricate tramite variabili d'ambiente e file `.env`. Questo evita l'esposizione di segreti nel codice sorgente o nei repository.
+* **Audit Logging:** Ogni interazione viene registrata in una tabella dedicata su PostgreSQL. Include timestamp, utente e operazione, garantendo la tracciabilità e la non-ripudiabilità, utile in caso di analisi forensi.
+* **Protezione della Cache:** Configurazione di header HTTP che impediscono al browser di memorizzare i dati sensibili, evitando che rimangano visibili nella cronologia dopo il logout.
+* **CORS Restrittivo:** Le API accettano connessioni esclusivamente dall'origine autorizzata (il frontend su porta 5173), bloccando tentativi di Cross-Origin Request da siti malevoli.
+* **Mitigazione Prompt Injection:** La mitigazione della Prompt Injection è implementata nella classe ChatService.java, dove l'input utente viene incapsulato in un System Prompt predefinito che istruisce Llama 3 a ignorare tentativi di bypass dei comandi o richieste di dati sensibili non autorizzati.
+* **Sicurezza Client-Side:** Rotte protette nel frontend che verificano la presenza e la validità del token prima di renderizzare qualsiasi componente sensibile.
+* **Integrazione LLM Locale:** L'uso di un modello AI on-premise garantisce che i dati dei dipendenti rimangano all'interno dell'infrastruttura aziendale, eliminando i rischi di privacy legati al cloud.
