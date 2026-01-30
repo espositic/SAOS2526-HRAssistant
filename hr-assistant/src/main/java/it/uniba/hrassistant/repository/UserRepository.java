@@ -7,25 +7,26 @@ import org.springframework.stereotype.Repository;
 import java.util.Optional;
 
 /**
- * Interfaccia di accesso ai dati per l'entità {@link User}.
- * Spring Data JPA genera automaticamente l'implementazione SQL al runtime.
+ * Repository per la gestione degli Utenti.
  */
 @Repository
 public interface UserRepository extends JpaRepository<User, Long> {
 
     /**
-     * Cerca un utente tramite email. Usato principalmente durante il login.
-     *
-     * @param email L'email da cercare.
-     * @return Un Optional contenente l'utente se trovato.
+     * METODO DERIVATO (Query Method).
+     * Spring legge "findByEmail" e genera automaticamente la query:
+     * SELECT * FROM app_users WHERE email = ?
+     * * Restituisce un Optional per evitare NullPointerException: 
+     * se l'utente non c'è, il contenitore è vuoto, ma non nullo.
      */
     Optional<User> findByEmail(String email);
 
     /**
-     * Verifica l'esistenza di un'email. Usato per prevenire duplicati in fase di registrazione.
-     *
-     * @param email L'email da verificare.
-     * @return true se l'email esiste già, false altrimenti.
+     * Altro METODO DERIVATO.
+     * Spring legge "existsByEmail" e genera una query ottimizzata:
+     * SELECT COUNT(*) FROM app_users WHERE email = ?
+     * * È molto più veloce di fare una "find" perché il DB risponde solo "sì/no"
+     * senza dover estrarre tutti i dati dell'utente.
      */
     boolean existsByEmail(String email);
 }

@@ -16,21 +16,20 @@ import org.springframework.http.HttpStatus;
 import java.util.List;
 
 /**
- * Service principale per la gestione delle interazioni di Chat.
- * <p>
- * Questo servizio orchestra tre componenti fondamentali:
- * 1. **Rate Limiter**: Verifica se l'utente ha diritto a fare una richiesta.
- * 2. **AI Client (Ollama)**: Invia il prompt al modello LLM.
- * 3. **Audit Logger**: Salva l'esito (positivo o negativo) su Database.
+ * Service principale che orchestra l'intelligenza artificiale.
+ * Usa la libreria "Spring AI" per comunicare con il modello (Ollama).
  */
 @Service
 public class ChatService {
 
+    // Componente di Spring AI che astrae la chiamata al modello LLM (come Ollama o GPT)
     private final ChatClient chatClient;
-    private final AuditLogRepository auditLogRepository;
-    private final RateLimiterService rateLimiterService;
+    private final AuditLogRepository auditLogRepository; // Per salvare la cronologia
+    private final RateLimiterService rateLimiterService; // Per bloccare lo spam
 
-    // DEFINIZIONE DEL COMPORTAMENTO (Prompt Engineering)
+    // --- PROMPT ENGINEERING ---
+    // Qui definiamo la "Personalità" e le "Regole" del bot.
+    // Il "System Message" è un'istruzione che l'utente non vede, ma che guida l'AI.
     private static final String SYSTEM_INSTRUCTION = """
             Sei un Assistente HR professionale dell'azienda.
             
@@ -51,23 +50,27 @@ public class ChatService {
     }
 
     /**
-     * Elabora una domanda dell'utente.
-     *
-     * @param userQuestion La domanda testuale.
-     * @return La risposta generata dall'AI.
-     * @throws ResponseStatusException con status 429 se il limite è superato.
+     * Il metodo Core: Prende la domanda, fa i controlli, chiama l'AI e salva il log.
      */
     public String getAnswer(String userQuestion) {
+
+        // Recuperiamo lo username dell'utente loggato dal SecurityContext
         String username = SecurityContextHolder.getContext().getAuthentication().getName();
-        // 1. RATE LIMITING CHECK
+        
+        // --- FASE 1: PROTEZIONE (Rate Limiting) ---
+        // Prima di sprecare risorse con l'AI, controlliamo se l'utente può fare richieste.
         if (!rateLimiterService.tryAccess(username)) {
+            // Se bloccato: Salviamo il tentativo fallito nel DB
             auditLogRepository.save(new AuditLog(username, userQuestion, "BLOCKED_RATE_LIMIT"));
+            // Restituiamo errore 429 (Too Many Requests) al frontend
             throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "Hai superato il limite di 10 richieste al minuto.");
         }
 
-        // 2. AI PROCESSING
+        // --- FASE 2: INTELLIGENZA (AI Processing) ---
         try {
-            //Costruzione del Prompt Sicuro
+            // Costruiamo il Prompt composto da due parti:
+            // 1. Istruzione di Sistema
+            // 2. Messaggio Utente
             Message systemMsg = new SystemMessage(SYSTEM_INSTRUCTION);
             Message userMsg = new UserMessage(userQuestion);
             Prompt prompt = new Prompt(List.of(systemMsg, userMsg));
@@ -75,13 +78,15 @@ public class ChatService {
             //Chiamata a Ollama
             String aiResponse = chatClient.call(prompt).getResult().getOutput().getContent();
 
-            // 3. AUDIT LOGGING (SUCCESS)
+            // --- FASE 3: MONITORAGGIO (Audit Log Success) ---
+            // Se tutto va bene, salviamo nel DB che l'operazione è riuscita
             auditLogRepository.save(new AuditLog(username, userQuestion, "SUCCESS"));
 
             return aiResponse;
 
         } catch (Exception e) {
-            // 4. ERROR HANDLING & LOGGING
+            // --- FASE 4: GESTIONE ERRORI ---
+            // Se l'AI fallisce (es. Ollama è spento), salviamo l'errore nel DB
             auditLogRepository.save(new AuditLog(username, userQuestion, "ERROR: " + e.getMessage()));
             throw new RuntimeException("Errore durante l'elaborazione della richiesta AI");
         }

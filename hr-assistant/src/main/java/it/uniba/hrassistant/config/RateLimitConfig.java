@@ -4,6 +4,7 @@ import io.github.bucket4j.distributed.ExpirationAfterWriteStrategy;
 import io.github.bucket4j.distributed.proxy.ProxyManager;
 import io.github.bucket4j.redis.lettuce.cas.LettuceBasedProxyManager;
 import io.lettuce.core.RedisClient;
+import io.lettuce.core.RedisURI;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.codec.ByteArrayCodec;
 import io.lettuce.core.codec.RedisCodec;
@@ -14,14 +15,6 @@ import org.springframework.context.annotation.Configuration;
 
 import java.time.Duration;
 
-/**
- * Configurazione per il sistema di Rate Limiting distribuito.
- * <p>
- * Questa classe configura l'integrazione tra la libreria Bucket4j e Redis.
- * Il ProxyManager serve a gestire i "bucket" (secchielli di gettoni) direttamente
- * nella memoria di Redis, permettendo al contatore di sopravvivere ai riavvii
- * dell'applicazione e di funzionare in un ambiente a microservizi (scaling orizzontale).
- */
 @Configuration
 public class RateLimitConfig {
 
@@ -31,28 +24,37 @@ public class RateLimitConfig {
     @Value("${spring.data.redis.port}")
     private int redisPort;
 
+    /**
+     * Configurazione del Client Redis (Lettuce).
+     * Lettuce è il driver Java più performante per connettersi a Redis.
+     */
     @Bean
     public RedisClient redisClient() {
-        // Usa l'host e la porta definiti in application.properties
-        return RedisClient.create("redis://" + redisHost + ":" + redisPort);
+        RedisURI redisURI = RedisURI.builder()
+                .withHost(redisHost)
+                .withPort(redisPort)
+                .withSsl(false)
+                .build();
+
+        return RedisClient.create(redisURI);
     }
 
     /**
-     * Crea e configura il ProxyManager basato su Lettuce (client Redis).
-     *
-     * @param redisClient Il client Redis iniettato automaticamente da Spring.
-     * @return Un'istanza di ProxyManager capace di gestire i token su Redis.
+     * Configurazione del ProxyManager di Bucket4j.
+     * Questo è il "Cervello" che gestisce i secchielli (Buckets) dentro Redis.
      */
     @Bean
     public ProxyManager<String> lettuceProxyManager(RedisClient redisClient) {
-        // Connette Lettuce a Redis
+        // Apriamo una connessione stateful (persistente) verso Redis.
         StatefulRedisConnection<String, byte[]> connection = redisClient
                 .connect(RedisCodec.of(StringCodec.UTF8, ByteArrayCodec.INSTANCE));
 
-        // Crea il manager dei bucket su Redis
+        // Creiamo il manager che userà questa connessione.
         return LettuceBasedProxyManager.builderFor(connection)
                 .withExpirationStrategy(
-                        ExpirationAfterWriteStrategy.basedOnTimeForRefillingBucketUpToMax(Duration.ofMinutes(10))
+                    // Strategia di pulizia: Se un bucket non viene toccato per 10 minuti, 
+                    // Redis lo cancella automaticamente per liberare memoria.
+                    ExpirationAfterWriteStrategy.basedOnTimeForRefillingBucketUpToMax(Duration.ofMinutes(10))
                 )
                 .build();
     }

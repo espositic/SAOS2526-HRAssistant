@@ -6,7 +6,6 @@ import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Component;
 
 import java.security.Key;
@@ -15,29 +14,34 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Function;
 
-/**
- * Utility class per la gestione del ciclo di vita dei token JWT (JSON Web Token).
- * Si occupa di: Generazione, Firma (HMAC-SHA256), Validazione ed Estrazione Claims.
- */
 @Component
 public class JwtUtil {
 
-    // Chiave segreta iniettata da application.properties (o variabili d'ambiente)
-    @Value("${application.security.jwt.secret-key:404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970}")
+    // Legge la chiave segreta che serve a firmare il token
+    @Value("${application.security.jwt.secret-key}")
     private String secretKey;
 
-    @Value("${application.security.jwt.expiration:86400000}") // 1 giorno default
+    @Value("${application.security.jwt.expiration}")
     private long jwtExpiration;
 
+    // --- ESTRAZIONE DATI ---
+
     /**
-     * Estrae lo username (email) dal token.
+     * Estrae lo username
      */
     public String extractUsername(String token) {
         return extractClaim(token, Claims::getSubject);
     }
 
     /**
-     * Metodo generico per estrarre uno specifico Claim dal payload del token.
+     * Estrae il ruolo dal claim personalizzato "role"
+     */
+    public String extractRole(String token) {
+        return extractClaim(token, claims -> claims.get("role", String.class));
+    }
+
+    /**
+     * Metodo generico per estrarre una qualsiasi informazione
      */
     public <T> T extractClaim(String token, Function<Claims, T> claimsResolver) {
         final Claims claims = extractAllClaims(token);
@@ -45,34 +49,45 @@ public class JwtUtil {
     }
 
     /**
-     * Genera un token per l'utente specificato senza claim extra.
+     * Decodifica il token usando la chiave segreta.
      */
-    public String generateToken(UserDetails userDetails) {
-        return generateToken(new HashMap<>(), userDetails);
+    private Claims extractAllClaims(String token) {
+        return Jwts.parserBuilder()
+                .setSigningKey(getSignInKey())
+                .build()
+                .parseClaimsJws(token)
+                .getBody();
     }
 
+    // --- GENERAZIONE ---
+
     /**
-     * Genera un token firmato digitalmente.
-     * * @param extraClaims Mappa di dati aggiuntivi da inserire nel payload.
-     * @param userDetails Dettagli dell'utente autenticato.
-     * @return La stringa JWT.
+     * Crea un nuovo token per un utente appena loggato.
      */
-    public String generateToken(Map<String, Object> extraClaims, UserDetails userDetails) {
+    public String generateToken(String username, String role) {
+        Map<String, Object> claims = new HashMap<>();
+        claims.put("role", role); // Inseriamo il ruolo nel payload
+        return buildToken(claims, username);
+    }
+
+    private String buildToken(Map<String, Object> extraClaims, String subject) {
         return Jwts.builder()
-                .setClaims(extraClaims)
-                .setSubject(userDetails.getUsername())
-                .setIssuedAt(new Date(System.currentTimeMillis()))
-                .setExpiration(new Date(System.currentTimeMillis() + jwtExpiration))
-                .signWith(getSignInKey(), SignatureAlgorithm.HS256)
-                .compact();
+                .setClaims(extraClaims) // Aggiunge i dati extra (ruolo)
+                .setSubject(subject)    // Imposta il proprietario
+                .setIssuedAt(new Date(System.currentTimeMillis())) // Data creazione
+                .setExpiration(new Date(System.currentTimeMillis() + jwtExpiration)) // Data scadenza
+                .signWith(getSignInKey(), SignatureAlgorithm.HS256) // Firma crittografica
+                .compact(); // Converte tutto in una stringa "base64"
     }
 
+    // --- VALIDAZIONE ---
+
     /**
-     * Valida il token verificando la firma, la scadenza e la corrispondenza con l'utente.
+     * Controlla se il token appartiene all'utente e se non è scaduto
      */
-    public boolean isTokenValid(String token, UserDetails userDetails) {
-        final String username = extractUsername(token);
-        return (username.equals(userDetails.getUsername())) && !isTokenExpired(token);
+    public boolean isTokenValid(String token, String username) {
+        final String extractedUsername = extractUsername(token);
+        return (extractedUsername.equals(username)) && !isTokenExpired(token);
     }
 
     private boolean isTokenExpired(String token) {
@@ -83,16 +98,9 @@ public class JwtUtil {
         return extractClaim(token, Claims::getExpiration);
     }
 
-    // Parsing del token usando la chiave segreta per verificare la firma
-    private Claims extractAllClaims(String token) {
-        return Jwts.parserBuilder()
-                .setSigningKey(getSignInKey())
-                .build()
-                .parseClaimsJws(token)
-                .getBody();
-    }
-
-    // Decodifica la chiave segreta da Base64
+    /**
+     * Decodifica la chiave segreta da Base64
+     */
     private Key getSignInKey() {
         byte[] keyBytes = Decoders.BASE64.decode(secretKey);
         return Keys.hmacShaKeyFor(keyBytes);

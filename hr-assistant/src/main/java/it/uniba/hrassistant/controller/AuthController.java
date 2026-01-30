@@ -1,7 +1,6 @@
 package it.uniba.hrassistant.controller;
 
 import it.uniba.hrassistant.config.JwtUtil;
-import it.uniba.hrassistant.model.Role;
 import it.uniba.hrassistant.model.User;
 import it.uniba.hrassistant.repository.UserRepository;
 import lombok.Data;
@@ -9,77 +8,58 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
-/**
- * Controller REST per la gestione dell'autenticazione.
- * Espone endpoint pubblici per registrazione e login.
- */
 @RestController
 @RequestMapping("/auth")
 @RequiredArgsConstructor
 public class AuthController {
 
     private final AuthenticationManager authenticationManager;
-    private final UserRepository userRepository;
-    private final PasswordEncoder passwordEncoder;
+    private final UserRepository userRepository; // Serve per recuperare il ruolo esatto
     private final JwtUtil jwtUtil;
 
     /**
-     * Endpoint per la registrazione di nuovi utenti.
-     * Crea un nuovo utente con ruolo USER e password hashata.
-     */
-    @PostMapping("/register")
-    public ResponseEntity<AuthResponse> register(@RequestBody RegisterRequest request) {
-
-        // Controllo preventivo duplicati
-        if (userRepository.existsByEmail(request.getEmail())) {
-            return ResponseEntity.badRequest().body(new AuthResponse("Email already in use"));
-        }
-
-        var user = User.builder()
-                .email(request.getEmail())
-                .password(passwordEncoder.encode(request.getPassword()))
-                .role(Role.USER) // Default a USER
-                .build();
-
-        userRepository.save(user);
-        var jwtToken = jwtUtil.generateToken(user);
-        return ResponseEntity.ok(new AuthResponse(jwtToken));
-    }
-
-    /**
-     * Endpoint per il login.
-     * Autentica le credenziali e restituisce un token JWT valido.
+     * Endpoint di Login.
+     * Riceve Email e Password, restituisce il Token JWT.
      */
     @PostMapping("/login")
     public ResponseEntity<AuthResponse> login(@RequestBody AuthRequest request) {
+        // 1. Autenticazione
+        // L'AuthenticationManager controlla se email e password corrispondono.
+        // Se la password è sbagliata, lancia un'eccezione e il codice si ferma qui (ritornando 403 Forbidden).
         authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(
                         request.getEmail(),
                         request.getPassword()
                 )
         );
-        var user = userRepository.findByEmail(request.getEmail()).orElseThrow();
-        var jwtToken = jwtUtil.generateToken(user);
+
+        // 2. Recuperiamo l'utente dal DB
+        // Se siamo arrivati qui, la password è corretta.
+        // Ora recuperiamo l'utente intero dal Database perché ci serve il suo RUOLO.
+        User user = userRepository.findByEmail(request.getEmail())
+                .orElseThrow(() -> new IllegalArgumentException("Errore inatteso: utente non trovato dopo auth."));
+
+        // 3. Estraiamo il ruolo come stringa (es. "HR_ADMIN" o "USER")
+        String role = user.getRole().name();
+
+        // 4. Generiamo il token includendo il ruolo
+        String jwtToken = jwtUtil.generateToken(user.getEmail(), role);
+
+        // 5. Restituiamo il token al client (Frontend) in formato JSON.
         return ResponseEntity.ok(new AuthResponse(jwtToken));
     }
 }
 
-// DTOs (Data Transfer Objects) per gestire i payload JSON
-@Data
-class RegisterRequest {
-    private String email;
-    private String password;
-}
-
+// DTO per ricevere i dati
 @Data
 class AuthRequest {
     private String email;
     private String password;
 }
 
+// DTO per inviare i dati
 @Data
 @lombok.AllArgsConstructor
 class AuthResponse {

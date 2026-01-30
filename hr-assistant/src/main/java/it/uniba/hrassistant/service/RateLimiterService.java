@@ -11,20 +11,14 @@ import java.time.Duration;
 import java.util.function.Supplier;
 
 /**
- * Servizio responsabile della gestione delle policy di Rate Limiting distribuito su Redis.
- * <p>
- * Implementa il pattern "Token Bucket":
- * <ul>
- * <li>Ogni utente ha un "secchiello" virtuale identificato dal suo username.</li>
- * <li>Il secchiello contiene massimo 10 gettoni.</li>
- * <li>Ogni minuto vengono rigenerati 10 gettoni.</li>
- * <li>Ogni richiesta consuma 1 gettone.</li>
- * </ul>
- * Se i gettoni finiscono, le richieste vengono rifiutate finché non avviene la ricarica.
+ * Servizio che implementa la logica del Rate Limiting (Limitazione della frequenza).
+ * Usa il database Redis per memorizzare i contatori, garantendo che il limite funzioni
+ * anche se l'applicazione viene eseguita su più server contemporaneamente.
  */
 @Service
 public class RateLimiterService {
 
+    // Il ProxyManager è l'oggetto (configurato in RateLimitConfig) che sa parlare con Redis.
     private final ProxyManager<String> proxyManager;
 
     @Autowired
@@ -33,28 +27,31 @@ public class RateLimiterService {
     }
 
     /**
-     * Verifica se l'utente ha diritto ad accedere alla risorsa.
-     * <p>
-     * Questo metodo contatta Redis, recupera il bucket associato all'utente
-     * e tenta di sottrarre 1 gettone.
-     *
-     * @param username L'identificativo univoco dell'utente (usato per generare la chiave Redis).
-     * @return {@code true} se l'accesso è consentito (il gettone è stato consumato),
-     * {@code false} se l'accesso è negato (esaurimento gettoni).
+     * Metodo booleano: SÌ (puoi passare) o NO (sei bloccato).
+     * Viene chiamato dal ChatService prima di invocare l'AI.
      */
     public boolean tryAccess(String username) {
-        // Definiamo la chiave univoca per Redis (es. "rate_limit:mario.rossi")
+        // 1. Chiave Univoca: Creiamo una chiave specifica per questo utente.
+        // Su Redis vedremo chiavi tipo: "rate_limit:mario.rossi@email.it"
         String key = "rate_limit:" + username;
 
-        // Configurazione della regola (Policy): 10 token ogni 1 minuto
+        // 2. Definizione della Regola:
+        // Usiamo una Supplier (funzione lambda) perché la configurazione serve solo 
+        // se il bucket non esiste ancora su Redis e deve essere creato da zero.
         Supplier<BucketConfiguration> configSupplier = () -> BucketConfiguration.builder()
+                // Concediamo 10 gettoni (richieste) in una finestra di 1 minuto.
                 .addLimit(Bandwidth.simple(10, Duration.ofMinutes(1)))
                 .build();
 
-        // Il proxyManager cerca il bucket su Redis. Se non esiste, lo crea al volo usando la configSupplier.
+        // 3. Recupero/Creazione del Bucket:
+        // Chiediamo al ProxyManager: "Dammi il secchiello associato a questa chiave".
+        // Se non c'è, crealo usando la regola sopra.
         Bucket bucket = proxyManager.builder().build(key, configSupplier);
 
-        // Proviamo a consumare 1 token.
+        // 4. Tentativo di Consumo:
+        // Proviamo a togliere 1 gettone dal secchiello.
+        // - Se ci sono gettoni: restituisce TRUE e decrementa il contatore su Redis.
+        // - Se il secchiello è vuoto: restituisce FALSE l'utente deve aspettare.
         return bucket.tryConsume(1);
     }
 }

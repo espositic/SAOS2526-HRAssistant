@@ -13,23 +13,23 @@ import java.util.Collection;
 import java.util.List;
 
 /**
- * Entità che rappresenta l'utente del sistema (HR o Dipendente).
- * Implementa {@link UserDetails} per integrarsi nativamente con Spring Security.
- * * @implNote La tabella è rinominata "app_users" per evitare conflitti con la keyword "user" di PostgreSQL.
+ * Entità User.
+ * Rappresenta la tabella nel database, ma implementa anche l'interfaccia UserDetails.
+ * Questo permette a Spring Security di usare direttamente questa classe per i controlli di sicurezza.
  */
-@Data
+@Data // Genera Getter, Setter, toString, ecc.
 @Builder
-@NoArgsConstructor
-@AllArgsConstructor
-@Entity
-@Table(name = "app_users")
+@NoArgsConstructor // Costruttore vuoto
+@AllArgsConstructor // Costruttore con tutti i campi
+@Entity // È una tabella del DB
+@Table(name = "app_users") // "user" è una parola riservata in SQL (PostgreSQL). La rinominiamo.
 public class User implements UserDetails {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @GeneratedValue(strategy = GenerationType.IDENTITY) 
     private Long id;
 
-    @Column(unique = true, nullable = false)
+    @Column(unique = true, nullable = false) // L'email deve essere univoca
     private String email;
 
     /**
@@ -38,7 +38,7 @@ public class User implements UserDetails {
     @Column(nullable = false)
     private String password;
 
-    @Enumerated(EnumType.STRING)
+    @Enumerated(EnumType.STRING) // Salva nel DB la stringa "HR_ADMIN" invece di un numero (0 o 1)
     private Role role;
 
     /**
@@ -50,6 +50,8 @@ public class User implements UserDetails {
         return List.of(new SimpleGrantedAuthority("ROLE_" + role.name()));
     }
 
+    // Spring Security usa username come identificativo generico.
+    // Noi gli passiamo l'email.
     @Override
     public String getUsername() {
         return email;
