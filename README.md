@@ -1,10 +1,10 @@
-# Secure HR Virtual Assistant
-**Secure HR Virtual Assistant** è una piattaforma backend sicura sviluppata per la gestione automatizzata delle risorse umane, progettata con un focus specifico sulla sicurezza architetturale, l'isolamento dei servizi e l'integrazione di Intelligenza Artificiale locale (Ollama/Llama 3) per garantire la privacy dei dati sensibili.
+# HRAssistant
+**HRAssistant** è una piattaforma sviluppata per la gestione automatizzata delle risorse umane, progettata con un focus sulla sicurezza architetturale, l'isolamento dei servizi e l'integrazione di un LLM locale per garantire la privacy dei dati sensibili.
 
-Progetto realizzato per l'esame di Sicurezza delle Architetture Orientate ai Servizi dell'Università degli Studi di Bari.
+Caso di studio realizzato per l'esame di Sicurezza delle Architetture Orientate ai Servizi dell'Università degli Studi di Bari.
 
 # Indice
-- [Secure HR Virtual Assistant](#secure-hr-virtual-assistant)
+- [HRAssistant](#hrassistant)
   - [Scenario](#scenario)
   - [Stack Tecnologico](#stack-tecnologico)
     - [Infrastruttura e Librerie](#infrastruttura-e-librerie)
@@ -51,8 +51,8 @@ La piattaforma funge da intermediario sicuro tra i dipendenti e i dati aziendali
 # Guida alla replicazione
 
 ### Prerequisiti
-* Sistema Operativo: Ubuntu 25.10 (o compatibile)
 * Java JDK 21
+* Maven
 * Docker & Docker Compose v2
 
 ### Configurazione Ambiente e Segreti (.env)
@@ -62,17 +62,28 @@ La piattaforma funge da intermediario sicuro tra i dipendenti e i dati aziendali
 
 ```properties
 # Database Configuration
+POSTGRES_USER=admin_hr
+POSTGRES_PASSWORD=change_me
 DB_NAME=hr_db
-DB_USER=change_me
+DB_HOST=hr_postgres
+
+DB_USER=admin_hr
 DB_PASSWORD=change_me
 
-# Security
-APP_SECRET_KEY=insert_your_secure_key_here
+# SSL
+SSL_KEY_PASSWORD=changeit
 
-# JWT Security
-JWT_SECRET_KEY=insert_a_very_long_hex_string_key_here_at_least_256_bit
+# JWT
+JWT_SECRET_KEY=your_super_secret_jwt_key_here
+# Scadenza in millisecondi
 JWT_EXPIRATION=86400000
 
+# Redis
+REDIS_HOST=hr_redis
+REDIS_PORT=6379
+
+# Ollama
+OLLAMA_HOST=http://hr_ollama:11434
 ```
 
 > **Nota:** Il file `.env` è inserito nel `.gitignore` per evitare leak di sicurezza su GitHub.
@@ -81,7 +92,7 @@ Per generare i token JWT viene usato l'algoritmo HMAC-SHA256.
 ## Generazione Certificati SSL (HTTPS)
 
 Il backend espone le API esclusivamente su HTTPS (Porta 8443). È necessario generare un Keystore.
-Eseguire il comando nella cartella `src/main/resources`:
+Eseguire il comando nella cartella `hr-assistant\src\main\resources`:
 
 ```bash
 keytool -genkeypair \
@@ -100,53 +111,19 @@ keytool -genkeypair \
 
 L'intero sistema (Database, Redis, Ollama, Backend e Frontend) è containerizzato. Per garantire un avvio corretto, il download del modello AI e la creazione degli utenti, utilizzare lo script di automazione.
 
-1. Creare un file `start.sh` nella root del progetto e incollare il seguente contenuto:
+1. Eseguire i seguenti comandi:
 
 ```bash
-#!/bin/bash
-docker compose down -v
-docker compose up -d
-sleep 15
+# Entra nella cartella backend, compila il file .jar
+cd hr-assistant && ./mvnw clean package -DskipTests && cd ..
 
-curl -s -k -X POST https://localhost:8443/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "admin@uniba.it",
-    "password": "password",
-    "fullName": "Super Admin",
-    "role": "HR_ADMIN"
-}'
+# Ricostruisce le immagini e avvia tutti i container in background
+docker compose up -d --build
 
-curl -s -k -X POST https://localhost:8443/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "mario.rossi@uniba.it",
-    "password": "password",
-    "fullName": "Mario Rossi",
-    "role": "USER"
-}'
-
-docker exec -it hr_ollama ollama pull llama3
-
+# Scarica ed esegue il modello llama3 (circa 4.7GB). 
+# Una volta finito, puoi digitare '/bye' per uscire dalla chat.
+docker exec -it hr_ollama ollama run llama3
 ```
-
-2. Rendere eseguibile e lanciare lo script:
-
-```bash
-chmod +x start.sh
-./start.sh
-
-```
-
-## Installazione Modello AI
-
-L'installazione del modello LLM (Llama 3) è **gestita automaticamente** dallo script `start.sh`.
-Il modello viene scaricato all'interno del container `hr_ollama` e salvato nel volume persistente. Non sono richieste azioni manuali.
-
----
-
-# Guida all'avvio del Backend
-
 Il Backend Spring Boot viene avviato automaticamente all'interno del container Docker.
 
 1. **Monitoraggio:** Per verificare che il backend sia attivo e controllare i log:
@@ -155,29 +132,20 @@ docker logs -f hr-assistant
 
 ```
 
-
 2. **Accesso SSL (Passaggio Critico):**
 Poiché si utilizza un certificato Self-Signed, il browser bloccherà le connessioni.
 * Aprire il browser su: `https://localhost:8443/auth/login`
 * Accettare il rischio di sicurezza (Avanzate -> Procedi su localhost).
 * **Senza questo passaggio, il Frontend non potrà comunicare con il Backend.**
 
+3. **Primo Accesso**
 
-
----
-
-# Avvio Frontend (React)
-
-Anche il Frontend è containerizzato e servito tramite Nginx/Vite all'interno di Docker.
-
-1. **Accesso:** Aprire il browser su `http://localhost:5173`.
-2. **Login:** Utilizzare le credenziali generate automaticamente:
-* **User:** `mario.rossi@uniba.it` / `password`
-* **Admin:** `admin@uniba.it` / `password`
-
-
-
-> **Nota:** Se si riscontrano errori di "Network Error", assicurarsi di aver completato il passaggio "Accesso SSL" descritto nella sezione Backend.
+Grazie allo script di inizializzazione automatica del database (`init.sql`), l'ambiente è pronto all'uso immediatamente dopo il primo avvio.
+* Aprire il browser all'indirizzo `http://localhost:5173`.
+* *Utenza Predefinita: Il database viene popolato automaticamente con le seguenti credenziali amministratore:
+   * Email: `admin@hr.com`
+   * Password: `admin123`
+* Gestione Utenti: Una volta effettuato l'accesso come `HR_ADMIN`, è possibile creare nuovi utenti o visualizzare i log di sistema.
 
 # Approcci di sicurezza adottati
 
@@ -245,20 +213,3 @@ Ogni interazione con il sistema viene tracciata in modo indelebile nel database 
 * Logout Sicuro: Utilizzo di `window.location.replace('/login')` per distruggere lo stato dell'applicazione e sovrascrivere la cronologia, impedendo l'uso del tasto "Indietro" per rientrare nella sessione.
 * Private Routes: Componenti React "Guard" che bloccano il rendering delle pagine se il token non è presente o è scaduto.
 * Axios Interceptors: Gestione centralizzata del token e reindirizzamento automatico al login in caso di errore 401 Unauthorized.
----
-
-# Architettura del Sistema
-
-<p align="center">
-<img src="img/architecture_schema.png" alt="Schema Architetturale" width="600">
-</p>
-
-L'architettura segue il pattern a microservizi (in container) con un Backend monolitico modulare:
-
-1. **Client (Browser/Postman):** Chiama il Backend su HTTPS (8443).
-2. **Spring Boot Backend:**
-* Valida il token e l'utente.
-* Controlla la Cache Redis per Rate Limiting.
-* Recupera i dati strutturati da PostgreSQL.
-* Inoltra il prompt anonimizzato a Ollama (porta interna 11434).
-3. **Ollama:** Elabora la risposta e la restituisce al backend.
