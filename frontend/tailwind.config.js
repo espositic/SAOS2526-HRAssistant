@@ -5,7 +5,15 @@ export default {
     "./src/**/*.{js,ts,jsx,tsx}",
   ],
   theme: {
-    extend: {},
+    extend: {
+      colors: {
+        // Puoi definire colori brand personalizzati qui
+        brand: {
+          light: '#3b82f6',
+          dark: '#1d4ed8',
+        }
+      },
+    },
   },
   plugins: [],
 }

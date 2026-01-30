@@ -3,64 +3,91 @@ import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
 
 const Login = () => {
+  // --- STATO (Hooks) ---
+  // Definiamo variabili che React "osserva". Se cambiano, la pagina si aggiorna.
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const navigate = useNavigate();
+  const [error, setError] = useState(false); // Diventa true se il login fallisce
+  const [loading, setLoading] = useState(false); // Diventa true mentre aspettiamo il server
+  const navigate = useNavigate(); // Funzione per cambiare pagina
 
-    const handleLogin = async (e) => {
-    e.preventDefault();
+  // Funzione chiamata quando l'utente preme "Invio" o clicca sul bottone
+  const handleLogin = async (e) => {
+    e.preventDefault(); // Impedisce al browser di ricaricare la pagina
+    setLoading(true);
+    setError(false);
+    
     try {
-        // Prova a mandare 'email' invece di 'username' se il tuo backend lo richiede
+        // Chiamata POST al backend (URL: /auth/login)
         const response = await api.post('/auth/login', { 
-        email: username, // qui usiamo il valore dello stato 'username' ma lo battezziamo 'email'
-        password: password 
+          email: username, 
+          password: password 
         });
         
+        // Se il server risponde OK, salviamo il Token JWT nel browser.
         localStorage.setItem('token', response.data.token);
+
+        // Navighiamo verso chat.
         navigate('/chat', { replace: true });
     } catch (err) {
-        console.error(err); // Guarda in console l'errore esatto!
-        alert("Errore durante l'accesso.");
+        console.error(err);
+        setError(true); // Mostra il messaggio rosso di errore
+    } finally {
+        setLoading(false); // Ferma l'animazione di caricamento
     }
-    };
+  };
 
   return (
-    <div className="flex flex-col items-center justify-center h-screen bg-slate-50">
-      {/* Sezione Logo HRAssistant */}
-      <div className="mb-8 text-center">
-        <div className="w-16 h-16 bg-blue-600 rounded-xl mx-auto mb-4 flex items-center justify-center shadow-lg shadow-blue-200">
-           <span className="text-white font-bold text-2xl">HR</span>
+    <div className="flex flex-col items-center justify-center min-h-screen bg-slate-50 px-4">
+      
+      {/* SEZIONE LOGO */}
+      <div className="mb-10 text-center animate-fade-in-down">
+        <div className="w-20 h-20 bg-blue-600 rounded-2xl mx-auto mb-6 flex items-center justify-center shadow-xl shadow-blue-200">
+           <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
         </div>
-        <h1 className="text-2xl font-light tracking-tight text-slate-800">
-          Assistant <span className="font-bold text-blue-600">Portal</span>
+        <h1 className="text-3xl font-light tracking-tight text-slate-800">
+          Benvenuto in <span className="font-black text-blue-600">HR Assistant</span>
         </h1>
       </div>
 
-      <form onSubmit={handleLogin} className="bg-white p-10 rounded-2xl shadow-sm border border-slate-200 w-full max-w-md">
-        <div className="space-y-6">
+      {/* CARD LOGIN */}
+      <div className="card-unified w-full max-w-md p-8 sm:p-10">
+        <form onSubmit={handleLogin} className="space-y-6">
+          
           <div>
-            <label className="text-sm font-medium text-slate-600 ml-1">Utente</label>
+            <label className="label-unified">Email</label>
             <input 
               type="text" 
-              className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl mt-1 focus:ring-2 focus:ring-blue-400 outline-none transition-all"
+              className="input-unified"
+              placeholder="Inserisci la tua email"
               onChange={(e) => setUsername(e.target.value)}
               required
             />
           </div>
+          
           <div>
-            <label className="text-sm font-medium text-slate-600 ml-1">Password</label>
+            <label className="label-unified">Password</label>
             <input 
               type="password" 
-              className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl mt-1 focus:ring-2 focus:ring-blue-400 outline-none transition-all"
+              className="input-unified"
+              placeholder="••••••••"
               onChange={(e) => setPassword(e.target.value)}
               required
             />
           </div>
-          <button className="w-full bg-blue-600 text-white p-4 rounded-xl font-semibold hover:bg-blue-700 hover:shadow-lg hover:shadow-blue-100 transition-all">
-            Entra nel Sistema
+
+          {/* MESSAGGIO DI ERRORE CONDIZIONALE */}
+          {error && (
+            <div className="p-3 bg-red-50 border border-red-100 rounded-xl text-center text-xs font-bold text-red-500">
+              Credenziali non valide. Riprova.
+            </div>
+          )}
+
+          <button disabled={loading} className="btn-primary">
+            {loading ? 'Accesso in corso...' : 'Accedi'}
           </button>
-        </div>
-      </form>
+        </form>
+      </div>
     </div>
   );
 };
