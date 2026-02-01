@@ -13,7 +13,8 @@ CREATE TABLE IF NOT EXISTS app_users (
 INSERT INTO app_users (email, password, role)
 VALUES (
     'admin@hr.com',
-    crypt('admin123', gen_salt('bf')), -- Genera hash compatibile con Spring Security
+    -- 'bf' indica Blowfish, 10 è il cost factor standard
+    crypt('admin123', gen_salt('bf', 10)), 
     'HR_ADMIN'
 )
 ON CONFLICT (email) DO NOTHING;
