@@ -154,3 +154,46 @@ Grazie allo script di inizializzazione automatica del database (`init.sql`), l'a
 * **Mitigazione Prompt Injection:** La mitigazione della Prompt Injection è implementata nella classe ChatService.java, dove l'input utente viene incapsulato in un System Prompt predefinito che istruisce Llama 3 a ignorare tentativi di bypass dei comandi o richieste di dati sensibili non autorizzati.
 * **Sicurezza Client-Side:** Rotte protette nel frontend che verificano la presenza e la validità del token prima di renderizzare qualsiasi componente sensibile.
 * **Integrazione LLM Locale:** L'uso di un modello AI on-premise garantisce che i dati dei dipendenti rimangano all'interno dell'infrastruttura aziendale, eliminando i rischi di privacy legati al cloud.
+
+# Architettura del Sistema
+
+## 1. Login
+Autenticazione stateless per l'accesso sicuro alla piattaforma.
+
+![Schema Flusso Login](img/login.png)
+
+1.  **Input:** Il Frontend invia le credenziali (`email`, `password`) al Backend.
+2.  **Verifica:** Spring Security interroga **PostgreSQL** e valida l'hash della password (BCrypt).
+3.  **Generazione Token:** Se le credenziali sono valide, viene creato un **JWT** firmato (HMAC-SHA256).
+4.  **Consegna:** Il token viene restituito al client e salvato in `localStorage` per le chiamate future.
+
+## 2. Registrazione Nuovo Utente
+Creazione di nuove utenze, riservata esclusivamente agli amministratori.
+
+![Schema Registrazione Utente](img/create-user.png)
+
+1.  **Controllo Accessi:** Il filtro di sicurezza blocca la richiesta se il JWT non contiene il ruolo `ROLE_HR_ADMIN`.
+2.  **Validazione:** Il Backend verifica che l'email non sia già presente nel Database.
+3.  **Sicurezza:** La password temporanea del nuovo utente viene cifrata con **BCrypt**.
+4.  **Persistenza:** L'utente viene salvato su **PostgreSQL** e l'operazione viene tracciata.
+
+## 3. Chat con l'AI
+Interazione con Ollama.
+
+![Schema Flusso Chat](img/chat.png)
+
+1.  **Richiesta:** L'utente invia un prompt; il sistema recupera l'identità dal token JWT.
+2.  **Protezione:** Controllo su **Redis** per il Rate Limiting (max 10 richieste/min).
+3.  **Inference:** Il Backend inoltra la richiesta al container **Ollama** tramite Spring AI.
+4.  **Audit:** Domanda e risposta vengono salvate nella tabella `audit_logs` su **PostgreSQL**.
+5.  **Risposta:** L'output dell'AI viene restituito all'utente.
+
+## 4. Consultazione Log di Audit
+Monitoraggio delle interazioni e delle operazioni di sistema.
+
+![Schema Consultazione Log](img/audit-log.png)
+
+1.  **Richiesta:** L'Admin accede alla sezione "Audit Logs".
+2.  **Autorizzazione:** Verifica dei permessi amministrativi (`HR_ADMIN`).
+3.  **Query:** Il Backend estrae lo storico delle operazioni da **PostgreSQL** (ordinato per data).
+4.  **Output:** Viene restituito un JSON contenente: *Utente*, *Azione/Prompt*, *Timestamp* ed *Esito*.
