@@ -20,6 +20,8 @@ Caso di studio realizzato per l'esame di Sicurezza delle Architetture Orientate 
 
 - [Architettura del Sistema](#architettura-del-sistema)
 
+- [Test di Sicurezza](#test-di-sicurezza)
+
 
 ## Scenario
 La piattaforma funge da intermediario sicuro tra i dipendenti e i dati aziendali, sfruttando un LLM (Large Language Model) locale per evitare la fuga di dati verso terzi.
@@ -155,7 +157,9 @@ Grazie allo script di inizializzazione automatica del database (`init.sql`), l'a
 * **Sicurezza Client-Side:** Rotte protette nel frontend che verificano la presenza e la validità del token prima di renderizzare qualsiasi componente sensibile.
 * **Integrazione LLM Locale:** L'uso di un modello AI on-premise garantisce che i dati dei dipendenti rimangano all'interno dell'infrastruttura aziendale, eliminando i rischi di privacy legati al cloud.
 
-# Architettura del Sistema
+# Architettura del sistema
+
+Nelle seguenti sezioni vengono descritti i comportamenti delle componenti per le possibili interazioni con il sistema da parte degli utenti.
 
 ## 1. Login
 Autenticazione stateless per l'accesso sicuro alla piattaforma.
@@ -197,3 +201,30 @@ Monitoraggio delle interazioni e delle operazioni di sistema.
 2.  **Autorizzazione:** Verifica dei permessi amministrativi (`HR_ADMIN`).
 3.  **Query:** Il Backend estrae lo storico delle operazioni da **PostgreSQL** (ordinato per data).
 4.  **Output:** Viene restituito un JSON contenente: *Utente*, *Azione/Prompt*, *Timestamp* ed *Esito*.
+
+# Test di Sicurezza
+
+Per testare l'efficacia delle contromisure implementate, sono stati predisposti scenari di test automatizzati mirati a verificare la resilienza del sistema contro abusi e accessi non autorizzati.
+
+## 1. Stress Test Rate Limiting (rate-limiting.py)
+Questo test simula un attacco di tipo Denial of Service leggero, inviando un alto numero di richieste concorrenti verso l'endpoint della chat in un arco temporale ridotto.
+
+* **Obiettivo:** Verificare che il filtro applicativo (Bucket4j su Redis) intervenga correttamente al superamento della soglia impostata (10 richieste/minuto).
+* **Procedura:**
+    1.  Viene effettuato il login amministrativo per ottenere un token JWT valido.
+    2.  Vengono lanciati 20 thread paralleli che interrogano simultaneamente l'API.
+* **Esito Atteso:**
+    * 10 richieste devono restituire status `200 OK`.
+    * Le rimanenti richieste devono essere respinte con status `429 Too Many Requests`, confermando l'isolamento del client per il tempo residuo della finestra temporale.
+
+## 2. Test Policy CORS (cors.py)
+Questo test verifica la robustezza della configurazione CORS, assicurandosi che il backend accetti istruzioni esclusivamente dal Frontend ufficiale e rifiuti tentativi di connessione da origini sconosciute.
+
+* **Obiettivo:** Garantire che browser o script ospitati su domini terzi non possano interagire con le API, prevenendo attacchi Cross-Site Request Forgery.
+* **Procedura:**
+    Vengono simulate due richieste *Preflight* (metodo `OPTIONS`) con header `Origin` differenti:
+    1.  Origine Autorizzata: `http://localhost:5173`.
+    2.  Origine Esterna: `https://google.com`.
+* **Esito Atteso:**
+    1.  Nel primo caso, il server deve rispondere con l'header `Access-Control-Allow-Origin: http://localhost:5173`, autorizzando la comunicazione.
+    2.  Nel secondo caso, il server deve rispondere senza l'header di autorizzazione bloccando la richiesta.
